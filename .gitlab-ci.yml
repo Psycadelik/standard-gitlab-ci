@@ -1,0 +1,44 @@
+image: registry.gitlab.com/<gitlab_username>/<repository>:latest
+
+services:
+- mysql:5.7
+
+variables:
+  MYSQL_DATABASE: 
+  MYSQL_ROOT_PASSWORD: 
+  DB_HOST: 
+  DB_USERNAME: 
+
+stages:
+- test
+- deploy
+
+unit_test:
+  stage: test
+  script:
+  - composer install
+  - cp .env.testing .env
+  - php artisan key:generate
+  - php artisan config:cache
+  - php artisan migrate
+  - php artisan route:clear
+  - php artisan config:clear
+  - php artisan cache:clear
+  - vendor/bin/phpunit
+
+deploy_production:
+  stage: deploy
+  script:
+  - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+  - eval $(ssh-agent -s)
+  - ssh-add <(echo "$SSH_PRIVATE_KEY")
+  - mkdir -p ~/.ssh
+  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+
+  - ~/.composer/vendor/bin/envoy run deploy --commit="$CI_COMMIT_SHA"
+  environment:
+    name: production
+    url: http://127.0.0.1
+  when: manual
+  only:
+  - master
